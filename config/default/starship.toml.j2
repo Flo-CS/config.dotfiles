@@ -2,7 +2,7 @@
 
 add_newline = false
 
-{% include env.DOTFILES_DIR + "/config/themes/" + theme_name + "/starship.toml" %}
+{% include env("DOTS_DIR") + "/config/theme/current/starship.toml" %}
 
 palette = "current_theme"
 

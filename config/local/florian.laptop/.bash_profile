@@ -1,6 +1,6 @@
 [[ -f ~/.bashrc ]] && . ~/.bashrc
 
-source ~/.default.profile
+source ~/.dotfiles/config/default/.bash_profile
 
 if uwsm check may-start; then
 	exec uwsm start hyprland.desktop

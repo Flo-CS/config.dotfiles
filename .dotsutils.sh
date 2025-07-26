@@ -1,46 +1,24 @@
 #!/usr/bin/env bash
 
-CONF_LOCAL_PATH=$DOTFILES_DIR/config/local/$DOTFILES_ID
+symlink() {
+	local target="$DOTS_DIR/$1"
+	local link_name="$2"
 
-# ----------------------
-# -- LN/COPY/TEMPLATE --
-# ----------------------
-
-conf_ln() {
-	if test -e "$DOTFILES_DIR/config/local/$DOTFILES_ID/$1"; then
-		__symlink "$DOTFILES_DIR/config/local/$DOTFILES_ID/$1" "$2"
-		__symlink "$DOTFILES_DIR/config/default/$1" "$(dirname $2)/$(__prefix_filename $(basename $2) 'default')"
-	else
-		__symlink "$DOTFILES_DIR/config/default/$1" "$2"
-	fi
+	backup_and_delete "$link_name" && mkdir -p "$(dirname "$link_name")" && ln -sT "$target" "$link_name" && log_info "created symlink $link_name -> $target"
 }
 
-conf_copy() {
-	if test -e "$DOTFILES_DIR/config/local/$DOTFILES_ID/$1"; then
-		__copy "$DOTFILES_DIR/config/local/$DOTFILES_ID/$1" "$2"
-		__copy "$DOTFILES_DIR/config/default/$1" "$(dirname $2)/$(__prefix_filename $(basename $2) 'default')"
-	else
-		__copy "$DOTFILES_DIR/config/default/$1" "$2"
-	fi
+template() {
+	local template_file="$DOTS_DIR/$1"
+	local output_file="${1%.j2}"
+
+	j2 "$template_file" >"$output_file" && log_info "rendered template $template_file to $output_file"
 }
 
-conf_template() {
-	local output_file ="${1%.j2}"
+copy() {
+	local source="$DOTS_DIR/$1"
+	local destination="$2"
 
-	if test -e "$DOTFILES_DIR/config/local/$DOTFILES_ID/$1"; then
-		__render_template "$DOTFILES_DIR/config/local/$DOTFILES_ID/$1" "${ouput_file}"
-		__render_template "$DOTFILES_DIR/config/default/$1" "$(dirname $output_file)/$(__prefix_filename $(basename $output_file) 'default')"
-	else
-		__render_template "$DOTFILES_DIR/config/default/$1" "${output_file}"
-	fi
-}
-
-theme_conf_ln() {
-	__symlink "$DOTFILES_DIR/config/themes/$DOTFILES_THEME_NAME/$1" "$2"
-}
-
-bin_ln() {
-	__symlink "$DOTFILES_DIR/bin/$1" "$2"
+	backup_and_delete "$destination" && mkdir -p "$(dirname "$destination")" && cp "$source" "$destination" && log_info "copied $source to $destination"
 }
 
 # FIXME: does not seem to work multiple times when the marker is first line
@@ -52,175 +30,105 @@ insert_with_marker() {
 	# Create temp file to preserve original location
 	local temp_file=$(mktemp)
 
-	if __run_with_sudo grep -Fq "$start" "$file" 2>/dev/null; then
+	if grep -Fq "$start" "$file" 2>/dev/null; then
 		# Replace content between markers
-		local start_line=$(__run_with_sudo grep -Fn "$start" "$file" | cut -d: -f1)
-		local end_line=$(__run_with_sudo grep -Fn "$end" "$file" | cut -d: -f1)
+		local start_line=$(grep -Fn "$start" "$file" | cut -d: -f1)
+		local end_line=$(grep -Fn "$end" "$file" | cut -d: -f1)
 
 		# Copy before, insert new content, copy after
 		{
-			__run_with_sudo head -n $((start_line - 1)) "$file" 2>/dev/null || true
+			head -n $((start_line - 1)) "$file" 2>/dev/null || true
 			printf '%s\n%s\n%s\n' "$start" "$content" "$end"
-			__run_with_sudo tail -n +$((end_line + 1)) "$file" 2>/dev/null || true
+			tail -n +$((end_line + 1)) "$file" 2>/dev/null || true
 		} >"$temp_file"
-		__run_with_sudo cp "$temp_file" "$file"
+		cp "$temp_file" "$file"
 	else
 		# Append new content if markers don't exist
-		__run_with_sudo cp "$file" "$temp_file"
+		cp "$file" "$temp_file"
 		printf '%s\n%s\n%s\n' "$start" "$content" "$end" >>"$temp_file"
-		__run_with_sudo cp "$temp_file" "$file"
+		cp "$temp_file" "$file"
 	fi
 
 	rm -f "$temp_file"
 	log_info "inserted content with marker $marker in $file"
 }
 
-__render_template() {
-	local template_file="$1"
-	local output_file="$2"
-
-	if ! __run_with_sudo test -e "$template_file"; then
-		log_error "template file $template_file does not exist."
-		return 1
-	fi
-
-	__run_with_sudo j2 "$template_file" >"$output_file" && log_info "rendered template $template_file to $output_file"
-}
-
-__copy() {
-	local source="$1"
-	local destination="$2"
-
-	backup_and_delete "$destination" && __run_with_sudo mkdir -p "$(dirname "$destination")" && __run_with_sudo cp "$source" "$destination" && log_info "copied $source to $destination"
-}
-
-__symlink() {
-	local target="$1"
-	local link_name="$2"
-
-	backup_and_delete "$link_name" && __run_with_sudo mkdir -p "$(dirname "$link_name")" && __run_with_sudo ln -sT "$target" "$link_name" && log_info "created symlink: $link_name -> $target"
-}
-
-# -----------------
-# ----- SUDO ------
-# -----------------
-
-DOTS_USE_SUDO=false
-
-with_sudo() {
-	DOTS_USE_SUDO=true
-	"$@"
-	DOTS_USE_SUDO=false
-}
-
-__run_with_sudo() {
-	if [ "$DOTS_USE_SUDO" = true ]; then
-		sudo "$@"
-	else
-		"$@"
-	fi
-}
-
 # -----------------
 # ---- LOGGING ----
 # -----------------
 
-export FOREGROUND="#908caa"
-export BACKGROUND="#191724"
-export BORDER_BACKGROUND="#403d52"
-export BORDER="normal"
+gum_themed() {
+	gum style --foreground "$FOREGROUND" --background "$BACKGROUND" --border "$BORDER" --border-background "$BORDER_BACKGROUND" "$@"
+}
 
 log_info() {
 	gum log --structured --level info "$*"
 }
+
 log_warn() {
 	gum log --structured --level warn "$*"
 }
+
 log_error() {
 	gum log --structured --level error "$*"
 }
+
 log_success() {
 	gum log --structured --level success "$*"
 }
 
 log_section() {
-	gum style --align center --width 50 "$*"
+	gum_themed style --align center --width 50 "$*"
 }
 
 # -----------------
 # ---- BACKUP -----
 # -----------------
 
-backup_and_delete() {
-	local file="$1"
-
-	if __run_with_sudo test -L "$file"; then
-		# log_warn "file $file is a symlink, no backup created."
-		__run_with_sudo rm -f "$file" && log_info "removed symlink: $file"
-		return 0
-	fi
-
-	if ! __run_with_sudo test -e "$file"; then
-		# log_warn "file $file does not exist, no backup created."
-		return 0
-	fi
-
-	__run_with_sudo cp -rf "$file" "${file}.bak" && log_info "backup created: ${file}.bak" && __run_with_sudo rm -rf "$file" && log_info "removed file: $file"
-}
-
 backup() {
 	local file="$1"
 
-	if __run_with_sudo test -L "$file"; then
-		# log_warn "file $file is a symlink, no backup created."
+	if test -L "$file"; then
 		return 0
 	fi
 
-	if ! __run_with_sudo test -e "$file"; then
-		# log_warn "file $file does not exist, no backup created."
+	if ! test -e "$file"; then
 		return 0
 	fi
 
-	__run_with_sudo cp -rf "$file" "${file}.bak" && log_info "backup created: ${file}.bak"
+	cp -rf "$file" "${file}.bak" && log_info "backup created ${file}.bak"
+}
+
+backup_and_delete() {
+	local file="$1"
+
+	if test -L "$file"; then
+		rm -f "$file" && log_info "removed symlink $file"
+		return 0
+	fi
+
+	if ! test -e "$file"; then
+		return 0
+	fi
+
+	cp -rf "$file" "${file}.bak" && log_info "backup created ${file}.bak" && rm -rf "$file" && log_info "removed file $file"
 }
 
 # -----------------
 # ----- PKGS ------
 # -----------------
 
-install_pkgs() {
-	local packages=("$@")
-
-	log_info "installing packages: ${packages[*]}"
-	sudo pacman -S --noconfirm --needed "${packages[@]}"
+pacman_install() {
+	log_info "installing packages: $@"
+	sudo pacman -S --noconfirm --needed "$@"
 }
 
-uninstall_pkgs() {
-	local packages=("$@")
-
-	log_info "uninstalling packages: ${packages[*]}"
-	sudo pacman -R --noconfirm "${packages[@]}"
+pacman_uninstall() {
+	log_info "uninstalling packages: $@"
+	sudo pacman -R --noconfirm "$@"
 }
 
-install_yay_pkgs() {
-	local packages=("$@")
-
-	log_info "installing yay packages: ${packages[*]}"
-	yay -S --needed "${packages[@]}"
-}
-
-# ------------------
-# --- FILENAMES ----
-# ------------------
-
-__prefix_filename() {
-	local filename="$1"
-	local prefix="$2"
-
-	if [[ "$filename" == .* ]]; then
-		echo ".${prefix}${filename}"
-	else
-		echo "${prefix}.${filename}"
-	fi
-
+yay_install() {
+	log_info "installing yay packages: $@"
+	yay -S --needed "$@"
 }

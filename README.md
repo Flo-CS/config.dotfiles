@@ -18,4 +18,4 @@ They should be placed in a directory with a file named .ventoyignore.
       - Choose btfrs partition type
 2) Install nvidia drivers with the EndeavourOS nvidia-installer: `nvidia-inst --closed` (IF NECESSARY)
 3) Fetch dotfiles
-4) Run `DOTFILES_DIR=~/dotfiles ~/dotfiles/post-install.sh` script
+4) Run `dots.sh`
